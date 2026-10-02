@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "skills": {
+    "neon": {
+      "source": "../../../../private/tmp/neon-agent-skills.GA0Izq",
+      "sourceType": "local",
+      "computedHash": "07ebeb0077c3a10fd82a87ee45a75f0c071bf118b95ea61da90907c8fc05a2f4"
+    },
+    "neon-ai-gateway": {
+      "source": "../../../../private/tmp/neon-agent-skills.GA0Izq",
+      "sourceType": "local",
+      "computedHash": "0edcef859ae35a6f0b1063395f56afb385b9e43999dcd1816f4075055858790a"
+    },
+    "neon-auth": {
+      "source": "../../../../private/tmp/neon-agent-skills.GA0Izq",
+      "sourceType": "local",
+      "computedHash": "5459d47c3fc325e09cb73641b15c48e5bc3e5d82a2059ba6ea8769bd73ff25e1"
+    },
+    "neon-functions": {
+      "source": "../../../../private/tmp/neon-agent-skills.GA0Izq",
+      "sourceType": "local",
+      "computedHash": "6b25c06345fbea79c0880b4345697b5eecc2f699eb3950434712d1305f059761"
+    },
+    "neon-object-storage": {
+      "source": "../../../../private/tmp/neon-agent-skills.GA0Izq",
+      "sourceType": "local",
+      "computedHash": "be0c3d0c362e51dadc4146e04e1067db30c81cd21c45517b511523a14e6ed19a"
+    },
+    "neon-postgres": {
+      "source": "../../../../private/tmp/neon-agent-skills.GA0Izq",
+      "sourceType": "local",
+      "computedHash": "b9763d379a3c5039e5555540a1333b1c529e2365d4f0b8fe2998ba41509814c5"
+    },
+    "neon-postgres-branches": {
+      "source": "../../../../private/tmp/neon-agent-skills.GA0Izq",
+      "sourceType": "local",
+      "computedHash": "d6b7ecfc52508c57bd3c8572a7cd0c582c256e36731124eb8598e8b24780ab1d"
+    },
+    "neon-postgres-egress-optimizer": {
+      "source": "../../../../private/tmp/neon-agent-skills.GA0Izq",
+      "sourceType": "local",
+      "computedHash": "9f991d785e63e9ae33e1a09db18ab8d559083861c70aebc6a740df01ca5bf214"
+    }
+  }
+}
