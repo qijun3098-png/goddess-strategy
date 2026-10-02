@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { NextResponse } from 'next/server';
 import { CHARACTERS, getCharacter } from '@/lib/characters';
+import { getAuthenticatedAppUser } from '@/lib/auth/user';
 import type { CharacterId } from '@/lib/types';
 import { generateTryOn, SeedreamServiceError } from '@/services/seedream';
 
@@ -27,6 +28,9 @@ export async function POST(request: Request) {
   const startedAt = Date.now();
 
   try {
+    const user = await getAuthenticatedAppUser();
+    if (!user) return NextResponse.json({ error: '请先登录', requestId }, { status: 401 });
+
     const formData = await request.formData();
     const characterId = String(formData.get('characterId') ?? '');
     const clothingImage = formData.get('clothingImage');

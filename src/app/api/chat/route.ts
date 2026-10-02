@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCharacter } from '@/lib/characters';
+import { getAuthenticatedAppUser } from '@/lib/auth/user';
 import type { CharacterId, ChatMessage, ChatResponse, MediaIntent } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -36,6 +37,9 @@ function safeJson(content: string): ChatResponse | null {
 
 export async function POST(request: Request) {
   try {
+    const user = await getAuthenticatedAppUser();
+    if (!user) return NextResponse.json({ error: '请先登录' }, { status: 401 });
+
     const body = await request.json() as { characterId?: CharacterId; messages?: ChatMessage[]; forcedMedia?: MediaIntent };
     if (!body.characterId || !body.messages?.length) return NextResponse.json({ error: '请求内容不完整' }, { status: 400 });
     const lastInput = body.messages.at(-1)?.content.trim() ?? '';

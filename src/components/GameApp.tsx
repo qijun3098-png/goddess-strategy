@@ -1,8 +1,10 @@
 'use client';
 
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CHARACTERS, getCharacter, type CharacterProfile } from '@/lib/characters';
+import { authClient } from '@/lib/auth/client';
 import { loadMedia, saveMedia } from '@/lib/mediaStore';
 import type { CharacterId, ChatMessage, ChatResponse, GameState, MediaIntent } from '@/lib/types';
 
@@ -29,7 +31,8 @@ function createMessage(role: ChatMessage['role'], content: string): ChatMessage 
   return { id: crypto.randomUUID(), role, content, createdAt: Date.now() };
 }
 
-export function GameApp() {
+export function GameApp({ userEmail }: { userEmail: string }) {
+  const router = useRouter();
   const [game, setGame] = useState<GameState>(DEFAULT_STATE);
   const [hydrated, setHydrated] = useState(false);
   const [input, setInput] = useState('');
@@ -261,8 +264,14 @@ export function GameApp() {
     setGame(DEFAULT_STATE);
   };
 
+  const signOut = async () => {
+    await authClient.signOut();
+    router.replace('/auth/sign-in');
+    router.refresh();
+  };
+
   if (!hydrated) return <div className="splash"><span>♥</span><p>正在准备心动相遇…</p></div>;
-  if (!current) return <CharacterSelect onChoose={chooseCharacter} />;
+  if (!current) return <CharacterSelect userEmail={userEmail} onChoose={chooseCharacter} onSignOut={() => void signOut()} />;
 
   return (
     <main className="chat-shell" style={{ '--accent': current.accent, '--accent-soft': current.accentSoft } as React.CSSProperties}>
@@ -338,12 +347,16 @@ export function GameApp() {
   );
 }
 
-function CharacterSelect({ onChoose }: { onChoose: (character: CharacterProfile) => void }) {
+function CharacterSelect({ userEmail, onChoose, onSignOut }: { userEmail: string; onChoose: (character: CharacterProfile) => void; onSignOut: () => void }) {
   const [active, setActive] = useState<CharacterId>('zhixia');
   const selected = useMemo(() => getCharacter(active), [active]);
   return (
     <main className="select-shell" style={{ '--accent': selected.accent, '--accent-soft': selected.accentSoft } as React.CSSProperties}>
-      <header className="select-header"><div className="brand-heart">♥</div><div><strong>女神攻略</strong><span>YOUR AI LOVE STORY</span></div><button aria-label="说明">?</button></header>
+      <header className="select-header">
+        <div className="brand-heart">♥</div>
+        <div><strong>女神攻略</strong><span>YOUR AI LOVE STORY</span></div>
+        <div className="account-controls"><span title={userEmail}>{userEmail}</span><button onClick={onSignOut}>退出</button></div>
+      </header>
       <section className="select-intro"><span>CHAPTER 01 · 初次心动</span><h1>今晚，想和谁聊聊？</h1><p>四种性格，四段不同的故事。选择让你心动的她。</p></section>
       <section className="character-grid">
         {CHARACTERS.map((character) => (

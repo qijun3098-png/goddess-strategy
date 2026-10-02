@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { DEFAULT_SPEAKERS, SPEAKER_ENV } from '@/lib/characters';
+import { getAuthenticatedAppUser } from '@/lib/auth/user';
 import type { CharacterId } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -31,6 +32,9 @@ function decodeAudio(raw: string) {
 
 export async function POST(request: Request) {
   try {
+    const user = await getAuthenticatedAppUser();
+    if (!user) return NextResponse.json({ error: '请先登录' }, { status: 401 });
+
     const { characterId, text } = await request.json() as { characterId?: CharacterId; text?: string };
     if (!characterId || !text?.trim()) return NextResponse.json({ error: '语音请求不完整' }, { status: 400 });
     const apiKey = process.env.VOLCENGINE_TTS_API_KEY;

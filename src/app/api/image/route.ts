@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { NextResponse } from 'next/server';
 import { getCharacter } from '@/lib/characters';
+import { getAuthenticatedAppUser } from '@/lib/auth/user';
 import type { CharacterId } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -11,6 +12,9 @@ const UNSAFE_REQUEST = /(未成年|学生妹|裸照|全裸|裸体|性器官|色�
 
 export async function POST(request: Request) {
   try {
+    const user = await getAuthenticatedAppUser();
+    if (!user) return NextResponse.json({ error: '请先登录' }, { status: 401 });
+
     const { characterId, text } = await request.json() as { characterId?: CharacterId; text?: string };
     if (!characterId || !text) return NextResponse.json({ error: '图片请求不完整' }, { status: 400 });
     if (UNSAFE_REQUEST.test(text)) return NextResponse.json({ error: '这个图片请求不符合内容安全规则' }, { status: 400 });

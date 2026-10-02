@@ -388,19 +388,20 @@ interface ChatMessage {
 
 ### 8.2 Neon 状态
 
-项目已经接入 Neon 配置，但当前 `neon.ts` 为：
+项目已经接入 Neon 配置，当前 `neon.ts` 启用了 Managed Better Auth：
 
 ```ts
-export default defineConfig({});
+export default defineConfig({ auth: true });
 ```
 
-数据库已经通过版本化 migration 创建 `schema_migrations`、`conversations`、`messages`、`media_assets`、`daily_quotas` 和 `generation_jobs`，并安全接管原有 `users` 表。当前游戏 API 尚未把用户、聊天、额度或媒体元数据写入这些表；schema 已就绪，业务读写接入属于下一阶段。
+数据库已经通过版本化 migration 创建 `schema_migrations`、`conversations`、`messages`、`media_assets`、`daily_quotas` 和 `generation_jobs`，并安全接管原有 `users` 表。邮箱密码、会话与验证码位于 Neon 托管的 `neon_auth` schema；`public.users.auth_user_id` 将 Auth 用户映射到游戏业务用户。登录后会自动创建或更新业务用户，聊天、额度和媒体元数据的云端读写仍属于下一阶段。
 
 ### 8.3 建议的云端数据模型（后续版本）
 
 正式账号与跨设备存档可使用以下逻辑表：
 
-- `users`：用户身份与创建时间。
+- `neon_auth`：托管的邮箱身份、密码、验证信息和会话。
+- `users`：Auth 用户映射、游戏资料与创建时间，不保存密码。
 - `conversations`：用户与角色的一对一会话。
 - `messages`：消息角色、文本、媒体类型、状态和时间。
 - `media_assets`：对象存储键、MIME 类型、大小、服务商请求 ID。
@@ -558,7 +559,7 @@ export default defineConfig({});
 
 1. “第 1 天”为固定文案，没有关系天数计算。
 2. 额度不会按日重置，也没有服务端防篡改。
-3. 没有登录、用户体系和跨设备同步。
+3. 已有邮箱注册登录和用户体系，但聊天与媒体仍未实现跨设备同步。
 4. Neon schema 与 migration 已就绪，但游戏 API 尚未读写云端业务数据。
 5. 清空聊天不会删除 IndexedDB 中的孤立媒体。
 6. 没有单条消息重试、媒体重新生成或取消生成。
@@ -579,7 +580,7 @@ export default defineConfig({});
 
 ### P1：账号与云存档
 
-- 用户登录。
+- 邮箱登录（已完成）。
 - Neon 云端聊天、额度和任务记录。
 - 多设备同步。
 - 对象存储中的媒体持久化与生命周期管理。

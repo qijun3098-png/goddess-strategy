@@ -20,7 +20,8 @@ pnpm db:migrate:down    # 只回滚最后一个已执行 migration
 migrations/
 ├── 001_adopt_users.sql
 ├── 002_create_conversations.sql
-└── 003_create_quotas_and_jobs.sql
+├── 003_create_quotas_and_jobs.sql
+└── 004_link_users_to_neon_auth.sql
 ```
 
 每个文件必须同时提供正向和回滚 SQL：
@@ -43,7 +44,8 @@ ALTER TABLE public.users DROP COLUMN example;
 4. Runner 使用 PostgreSQL advisory lock，防止两个部署并发迁移。
 5. `down` 可能删除表或数据，只应在确认影响后执行。
 6. 先在 Neon 临时分支测试，再应用到 production。
-7. 应用 production 前先检查：
+7. `004` 依赖该分支已经部署 Neon Managed Auth；密码、会话和验证码只保存在 `neon_auth` schema，`public.users` 只保存业务资料和 `auth_user_id`。
+8. 应用 production 前先检查：
 
 ```bash
 pnpm db:migrate:status

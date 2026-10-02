@@ -1,5 +1,9 @@
-import { GameApp } from '@/components/GameApp';
+import { redirect } from 'next/navigation';
+import { auth } from '@/lib/auth/server';
 
-export default function Page() {
-  return <GameApp />;
+export const dynamic = 'force-dynamic';
+
+export default async function Page() {
+  const { data: session } = await auth.getSession();
+  redirect(session?.user ? '/game' : '/auth/sign-in');
 }
