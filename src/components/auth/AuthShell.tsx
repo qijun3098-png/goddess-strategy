@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import CodeBackground from '@/components/ui/code-background';
 
 export function AuthShell({
   eyebrow,
@@ -6,15 +7,18 @@ export function AuthShell({
   description,
   children,
   footer,
+  codeBackground = false,
 }: {
   eyebrow: string;
   title: string;
   description: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  codeBackground?: boolean;
 }) {
   return (
-    <main className="auth-page">
+    <main className={codeBackground ? 'auth-page has-code-background' : 'auth-page'}>
+      {codeBackground && <CodeBackground label="EMAIL // LOGIN" />}
       <section className="auth-card">
         <Link className="auth-brand" href="/" aria-label="返回女神攻略首页">
           <span>♥</span>
