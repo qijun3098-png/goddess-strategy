@@ -11,7 +11,7 @@ import type { CharacterId, ChatMessage, ChatResponse, GameState, MediaIntent } f
 const STORAGE_KEY = 'goddess-strategy-v1';
 const DEFAULT_STATE: GameState = { selectedCharacter: null, messages: {}, textRemaining: 100, imageRemaining: 3, voiceRemaining: 3, tryOnRemaining: 3 };
 
-const Icon = ({ name }: { name: 'back' | 'more' | 'image' | 'voice' | 'shirt' | 'send' | 'sparkle' | 'heart' | 'close' | 'upload' }) => {
+const Icon = ({ name }: { name: 'back' | 'more' | 'image' | 'voice' | 'shirt' | 'send' | 'sparkle' | 'heart' | 'close' | 'upload' | 'chat' | 'users' | 'archive' | 'settings' | 'phone' | 'video' | 'plus' }) => {
   const paths = {
     back: <path d="m15 18-6-6 6-6" />,
     more: <><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></>,
@@ -23,6 +23,13 @@ const Icon = ({ name }: { name: 'back' | 'more' | 'image' | 'voice' | 'shirt' | 
     heart: <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z"/>,
     close: <><path d="m6 6 12 12"/><path d="M18 6 6 18"/></>,
     upload: <><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></>,
+    chat: <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />,
+    users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>,
+    archive: <><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v13h16V8M10 12h4"/></>,
+    settings: <><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.08A1.7 1.7 0 0 0 8.94 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.57 15 1.7 1.7 0 0 0 3 14H3v-4h.08A1.7 1.7 0 0 0 4.6 8.94a1.7 1.7 0 0 0-.34-1.88L4.2 7l2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.57 1.7 1.7 0 0 0 10 3V3h4v.08A1.7 1.7 0 0 0 15.06 4.6a1.7 1.7 0 0 0 1.88-.34L17 4.2 19.83 7l-.06.06a1.7 1.7 0 0 0-.34 1.88A1.7 1.7 0 0 0 21 10h.08v4H21a1.7 1.7 0 0 0-1.6 1Z"/></>,
+    phone: <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.69 2.8a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.33 1.84.56 2.8.69A2 2 0 0 1 22 16.92Z" />,
+    video: <><path d="m16 13 5 3V8l-5 3"/><rect width="13" height="14" x="3" y="5" rx="2"/></>,
+    plus: <><path d="M12 5v14"/><path d="M5 12h14"/></>,
   };
   return <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 };
@@ -36,6 +43,7 @@ export function GameApp({ userEmail }: { userEmail: string }) {
   const [game, setGame] = useState<GameState>(DEFAULT_STATE);
   const [hydrated, setHydrated] = useState(false);
   const [input, setInput] = useState('');
+  const [conversationQuery, setConversationQuery] = useState('');
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState('');
   const [tryOnOpen, setTryOnOpen] = useState(false);
@@ -89,6 +97,11 @@ export function GameApp({ userEmail }: { userEmail: string }) {
 
   const current = game.selectedCharacter ? getCharacter(game.selectedCharacter) : null;
   const currentMessages = useMemo(() => current ? game.messages[current.id] ?? [] : [], [current, game.messages]);
+  const filteredCharacters = useMemo(() => {
+    const query = conversationQuery.trim().toLowerCase();
+    if (!query) return CHARACTERS;
+    return CHARACTERS.filter((character) => `${character.name}${character.archetype}${character.status}`.toLowerCase().includes(query));
+  }, [conversationQuery]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -276,26 +289,70 @@ export function GameApp({ userEmail }: { userEmail: string }) {
   return (
     <main className="chat-shell" style={{ '--accent': current.accent, '--accent-soft': current.accentSoft } as React.CSSProperties}>
       {toast && <div className="toast"><Icon name="sparkle" />{toast}</div>}
-      <div className="chat-phone">
-        <header className="chat-header">
-          <button className="icon-button" onClick={() => setGame((state) => ({ ...state, selectedCharacter: null }))} aria-label="返回角色选择"><Icon name="back" /></button>
-          <div className="header-person">
-            <Image src={current.image} alt={current.name} width={46} height={46} priority />
-            <div><strong>{current.name}</strong><span><i />在线 · {current.status}</span></div>
+      <div className="chat-window">
+        <aside className="chat-rail" aria-label="主要功能">
+          <div className="rail-top">
+            <button className="rail-brand" onClick={() => setGame((state) => ({ ...state, selectedCharacter: null }))} aria-label="返回角色选择">♥</button>
+            <button className="rail-button active" aria-label="聊天"><Icon name="chat" /></button>
+            <button className="rail-button" onClick={() => setGame((state) => ({ ...state, selectedCharacter: null }))} aria-label="选择角色"><Icon name="users" /></button>
+            <button className="rail-button" onClick={reset} aria-label="清空聊天记录"><Icon name="archive" /></button>
           </div>
-          <button className="icon-button" onClick={reset} aria-label="清空记录"><Icon name="more" /></button>
+          <div className="rail-bottom">
+            <i className="rail-online" aria-label="在线" />
+            <button className="rail-button" onClick={() => void signOut()} aria-label="退出登录"><Icon name="settings" /></button>
+          </div>
+        </aside>
+
+        <aside className="conversation-panel">
+          <header className="conversation-heading">
+            <div><small>AI LOVE STORY</small><strong>女神攻略</strong></div>
+            <button onClick={() => setGame((state) => ({ ...state, selectedCharacter: null }))} aria-label="选择新角色"><Icon name="plus" /></button>
+          </header>
+          <label className="conversation-search">
+            <span aria-hidden="true">⌕</span>
+            <input value={conversationQuery} onChange={(event) => setConversationQuery(event.target.value)} placeholder="搜索会话" aria-label="搜索会话" />
+          </label>
+          <div className="conversation-list">
+            {filteredCharacters.map((character) => {
+              const lastMessage = game.messages[character.id]?.at(-1);
+              const lastTime = lastMessage ? new Date(lastMessage.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+              return (
+                <button key={character.id} className={`conversation-item ${current.id === character.id ? 'active' : ''}`} onClick={() => chooseCharacter(character)}>
+                  <Image src={character.image} alt="" width={42} height={42} />
+                  <span className="conversation-copy">
+                    <span className="conversation-name"><strong>{character.name}</strong><time>{lastTime}</time></span>
+                    <span className="conversation-preview">{lastMessage?.content ?? character.status}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="conversation-spacer" />
+          <section className="relationship-strip" aria-label="剩余额度">
+            <div><span>文字</span><strong>{game.textRemaining}</strong></div>
+            <div><span>自拍</span><strong>{game.imageRemaining}</strong></div>
+            <div><span>语音</span><strong>{game.voiceRemaining}</strong></div>
+            <div><span>换衣</span><strong>{game.tryOnRemaining}</strong></div>
+          </section>
+          <div className="conversation-account"><span title={userEmail}>{userEmail}</span><button onClick={() => void signOut()}>退出</button></div>
+        </aside>
+
+        <section className="chat-phone">
+        <header className="chat-header">
+          <button className="icon-button mobile-back" onClick={() => setGame((state) => ({ ...state, selectedCharacter: null }))} aria-label="返回角色选择"><Icon name="back" /></button>
+          <div className="header-person">
+            <i className="header-online" />
+            <div><strong>{current.name}</strong><span>在线 · {current.status}</span></div>
+          </div>
+          <div className="header-actions">
+            <button className="icon-button" disabled aria-label="语音通话"><Icon name="phone" /></button>
+            <button className="icon-button" disabled aria-label="视频通话"><Icon name="video" /></button>
+            <button className="icon-button" onClick={reset} aria-label="清空记录"><Icon name="more" /></button>
+          </div>
         </header>
 
-        <section className="relationship-strip">
-          <div><span>文字</span><strong>{game.textRemaining}</strong></div>
-          <div><span>自拍</span><strong>{game.imageRemaining}</strong></div>
-          <div><span>语音</span><strong>{game.voiceRemaining}</strong></div>
-          <div><span>换衣</span><strong>{game.tryOnRemaining}</strong></div>
-          <p><Icon name="heart" /> 心动相遇 · 第 1 天</p>
-        </section>
-
         <div className="message-list" ref={scrollRef}>
-          <div className="date-divider"><span>今天</span></div>
+          <div className="date-divider"><span>今天 · 心动相遇第 1 天</span></div>
           {currentMessages.map((message) => <MessageBubble key={message.id} message={message} character={current} />)}
           {sending && <div className="message-row assistant"><Image src={current.image} alt="" width={34} height={34} /><div className="typing"><i/><i/><i/></div></div>}
         </div>
@@ -312,10 +369,11 @@ export function GameApp({ userEmail }: { userEmail: string }) {
           </div>
           <div className="composer">
             <textarea value={input} onChange={(event) => setInput(event.target.value.slice(0, 50))} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send(); } }} placeholder="和她说点什么…" rows={1} />
-            <span className={input.length > 42 ? 'warn' : ''}>{input.length}/50</span>
+            <span className={input.length > 42 ? 'warn' : ''}>{input.length}/50 · {game.textRemaining}</span>
             <button onClick={() => void send()} disabled={!input.trim() || sending}><Icon name="send" /></button>
           </div>
         </footer>
+        </section>
       </div>
 
       {tryOnOpen && (
