@@ -30,7 +30,9 @@ pnpm dev:auth
 
 ## 欢迎邮件工具
 
-`src/lib/email.ts` 提供服务端函数 `sendWelcomeEmail(userEmail, userName)`，读取私密环境变量 `RESEND_API_KEY`，由 Resend 发送欢迎邮件并返回 `{ id }`。邮件 ID 表示 Resend 已接受发送请求，最终投递状态以 Resend 为准。注册流程尚未自动调用此函数，每日群发函数也仍等待接入。
+`src/lib/email.ts` 提供服务端函数 `sendWelcomeEmail(userEmail, userName)`，读取私密环境变量 `RESEND_API_KEY`，由 Resend 发送欢迎邮件并返回 `{ id }`。邮件 ID 表示 Resend 已接受发送请求，最终投递状态以 Resend 为准。
+
+邮箱注册返回成功和有效的用户信息后，认证 API 使用 Next.js `after()` 在响应返回后尝试发送欢迎邮件。登录和失败注册不会触发；邮件发送失败只记录服务端日志，不改变注册响应及验证码流程。Resend 使用邮箱哈希作为幂等键，在 24 小时内对相同欢迎邮件请求去重，不保证永久只发送一次。Neon 对重复注册可能返回成功格式，超过去重窗口的重复注册仍可能触发欢迎邮件。后台任务未实现持久化重试，每日群发函数仍等待接入。
 
 当前发件人为 `女神攻略 <onboarding@resend.dev>`，只支持向 Resend 账号绑定的邮箱发送普通测试邮件。给其他用户发送前，需要在 Resend 验证自己的域名并更换发件人地址。
 

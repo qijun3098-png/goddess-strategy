@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { createHash } from 'node:crypto';
 import { Resend } from 'resend';
 
 const WELCOME_EMAIL_FROM = '女神攻略 <onboarding@resend.dev>';
@@ -43,6 +44,9 @@ export async function sendWelcomeEmail(userEmail: string, userName: string): Pro
         </div>
       `,
       text: `Hi ${name}，欢迎来到女神攻略！\n\n你的心动故事，从这里开始。\n选择喜欢的角色，聊聊今天发生的趣事，或分享你的心情。\n期待与你相遇，开启属于你的故事。\n\n—— 女神攻略`,
+    }, {
+      // 同一邮箱的欢迎邮件在 Resend 的 24 小时幂等窗口内去重。
+      idempotencyKey: `welcome-email/v1/${createHash('sha256').update(to.toLowerCase()).digest('hex')}`,
     });
     if (error || !data?.id) throw new Error('Resend 未接受邮件');
     return { id: data.id };
