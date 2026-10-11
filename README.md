@@ -26,7 +26,13 @@ pnpm dev:auth
 
 线上需在部署平台的生产环境中单独配置 `CRON_SECRET` 并重新部署。cron-job.org 使用相同的线上密钥，任务 URL 为 `https://goddess-strategy.vercel.app/api/cron/daily-email`。
 
-目前只实现任务入口和鉴权，`src/lib/email.ts` 中的发送函数等待后续接入。密钥未配置或邮件服务未接入时返回 503，鉴权失败返回 401。邮件服务接入并验证完成后再启用定时任务。
+目前只实现任务入口和鉴权，`src/lib/email.ts` 中的每日群发函数等待后续接入。密钥未配置或每日群发服务未接入时返回 503，鉴权失败返回 401。每日群发服务接入并验证完成后再启用定时任务。
+
+## 欢迎邮件工具
+
+`src/lib/email.ts` 提供服务端函数 `sendWelcomeEmail(userEmail, userName)`，读取私密环境变量 `RESEND_API_KEY`，由 Resend 发送欢迎邮件并返回 `{ id }`。邮件 ID 表示 Resend 已接受发送请求，最终投递状态以 Resend 为准。注册流程尚未自动调用此函数，每日群发函数也仍等待接入。
+
+当前发件人为 `女神攻略 <onboarding@resend.dev>`，只支持向 Resend 账号绑定的邮箱发送普通测试邮件。给其他用户发送前，需要在 Resend 验证自己的域名并更换发件人地址。
 
 ## 安全
 
