@@ -20,6 +20,14 @@ pnpm dev:auth
 
 未配置 API Key 时，聊天接口会进入本地演示模式；图片和语音会提示尚未配置服务。
 
+## 每日情话定时任务
+
+在 `.env.local` 配置 `CRON_SECRET`，重启本地服务后，通过 `GET /api/cron/daily-email` 调用任务；请求头必须包含 `Authorization: Bearer <CRON_SECRET>`。密钥只放在私密环境配置中，不提交到 Git。
+
+线上需在部署平台的生产环境中单独配置 `CRON_SECRET` 并重新部署。cron-job.org 使用相同的线上密钥，任务 URL 为 `https://goddess-strategy.vercel.app/api/cron/daily-email`。
+
+目前只实现任务入口和鉴权，`src/lib/email.ts` 中的发送函数等待后续接入。密钥未配置或邮件服务未接入时返回 503，鉴权失败返回 401。邮件服务接入并验证完成后再启用定时任务。
+
 ## 安全
 
 - 所有第三方 AI 请求均由 Next.js Route Handler 发起。
