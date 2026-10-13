@@ -72,7 +72,8 @@ export class DailyEmailNotConfiguredError extends Error {
 }
 
 function dailyConfig() {
-  if (!process.env.RESEND_API_KEY?.trim() || !process.env.ARK_API_KEY?.trim()) {
+  if (!process.env.RESEND_API_KEY?.trim() || !process.env.ARK_API_KEY?.trim()
+    || !process.env.DAILY_EMAIL_TEST_RECIPIENT?.trim()) {
     throw new DailyEmailNotConfiguredError();
   }
 }
@@ -86,6 +87,10 @@ function shanghaiDay() {
 async function sendDailyEmail(userEmail: string, userName: string, day: string) {
   dailyConfig();
   const to = userEmail.trim().toLowerCase();
+  // 使用 Resend 测试发件人时，只允许显式配置的测试邮箱；其他用户不调用 AI。
+  if (to !== process.env.DAILY_EMAIL_TEST_RECIPIENT!.trim().toLowerCase()) {
+    return { id: null, skipped: true };
+  }
   if (to.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
     throw new Error('收件人邮箱格式不正确');
   }

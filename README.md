@@ -22,6 +22,8 @@ pnpm dev:auth
 
 ## 每日情话定时任务
 
+当前为 Resend 测试模式：必须在生产环境配置私密变量 `DAILY_EMAIL_TEST_RECIPIENT`，值为 Resend 账号邮箱。仅此邮箱会生成并接收每日邮件，其他用户计入 `skipped`，不调用 AI；变量留空时任务返回 503。验证自己的发件域名并调整发件人及收件人策略后，才能开放群发。
+
 在 `.env.local` 配置 `CRON_SECRET`，重启本地服务后，通过 `GET /api/cron/daily-email` 调用任务；请求头必须包含 `Authorization: Bearer <CRON_SECRET>`。密钥只放在私密环境配置中，不提交到 Git。
 
 线上需在部署平台的生产环境中单独配置 `CRON_SECRET` 并重新部署。cron-job.org 使用相同的线上密钥，任务 URL 为 `https://goddess-strategy.vercel.app/api/cron/daily-email`。
