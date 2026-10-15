@@ -11,7 +11,11 @@
     "typecheck": "tsc --noEmit",
     "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.mjs up",
     "db:migrate:status": "node --env-file-if-exists=.env.local scripts/migrate.mjs status",
-    "db:migrate:down": "node --env-file-if-exists=.env.local scripts/migrate.mjs down"
+    "db:migrate:down": "node --env-file-if-exists=.env.local scripts/migrate.mjs down",
+    "test": "vitest run && node --test tests/acceptance.test.mjs",
+    "check": "node scripts/acceptance/check.mjs",
+    "acceptance": "node scripts/acceptance/review.mjs",
+    "work:next": "node scripts/acceptance/work.mjs"
   },
   "dependencies": {
     "@neon/config": "^1.8.3",
@@ -29,14 +33,20 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.0",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
     "@types/node": "^20.0.0",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "eslint": "^9.0.0",
     "eslint-config-next": "16.1.1",
+    "fake-indexeddb": "^6.2.5",
+    "jsdom": "^30.1.2",
     "tailwindcss": "^4.1.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^4.1.11"
   },
   "packageManager": "pnpm@9.0.0"
 }

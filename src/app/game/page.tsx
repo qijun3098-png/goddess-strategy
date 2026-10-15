@@ -8,5 +8,5 @@ export default async function GamePage() {
   const user = await getAuthenticatedAppUser();
   if (!user) redirect('/auth/sign-in');
 
-  return <GameApp userEmail={user.email} />;
+  return <GameApp userId={user.authUserId} userEmail={user.email} />;
 }

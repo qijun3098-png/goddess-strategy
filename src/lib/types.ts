@@ -11,6 +11,9 @@ export interface ChatMessage {
   mediaKey?: string;
   pending?: boolean;
   failed?: boolean;
+  error?: string;
+  requestedMedia?: Exclude<MediaIntent, 'none'>;
+  requestedQuota?: 'imageRemaining' | 'voiceRemaining' | 'tryOnRemaining';
 }
 
 export interface ChatResponse {

@@ -99,7 +99,7 @@ export async function POST(request: Request) {
   } catch (error) {
     const timedOut = error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError');
     const status = timedOut ? 504 : error instanceof SeedreamServiceError ? error.status : 500;
-    const message = timedOut ? '换衣图片下载超时，请稍后再试' : error instanceof Error ? error.message : '换衣生成失败';
+    const message = timedOut ? '换衣图片下载超时，请稍后再试' : '换衣生成失败，请稍后再试';
     console.error('[try-on] request failed', {
       requestId,
       status,
