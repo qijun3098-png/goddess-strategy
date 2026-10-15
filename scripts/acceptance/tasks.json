@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "verify-account-chat-iteration",
+      "approved": true,
+      "status": "ready",
+      "kind": "verify",
+      "title": "验收本轮账号隔离、聊天可靠性及自动验收工具",
+      "requirements": "docs/iteration-acceptance.md",
+      "maxDurationSeconds": 1800,
+      "maxRepairRounds": 2
+    }
+  ]
+}

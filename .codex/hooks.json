@@ -1,0 +1,28 @@
+{
+  "description": "女神攻略：代码变更后自动验收；普通问答无变更时跳过。",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/scripts/acceptance/hook.mjs\" start",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/scripts/acceptance/hook.mjs\" stop",
+            "timeout": 600,
+            "statusMessage": "独立验收本轮修改"
+          }
+        ]
+      }
+    ]
+  }
+}

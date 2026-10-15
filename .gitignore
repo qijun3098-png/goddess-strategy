@@ -1,5 +1,6 @@
 # dependencies
 /node_modules
+/.pnpm-store/
 
 # next.js
 /.next/
@@ -21,3 +22,9 @@
 # typescript
 *.tsbuildinfo
 .neon
+
+# 本地验收材料、脱敏日志、任务执行工作目录
+/.acceptance/
+/coverage/
+/test-results/
+/playwright-report/

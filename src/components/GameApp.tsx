@@ -8,8 +8,9 @@ import { authClient } from '@/lib/auth/client';
 import { loadMedia, saveMedia } from '@/lib/mediaStore';
 import type { CharacterId, ChatMessage, ChatResponse, GameState, MediaIntent } from '@/lib/types';
 
-const STORAGE_KEY = 'goddess-strategy-v1';
-const DEFAULT_STATE: GameState = { selectedCharacter: null, messages: {}, textRemaining: 100, imageRemaining: 3, voiceRemaining: 3, tryOnRemaining: 3 };
+import { initialGame, readAccountGame, writeAccountGame } from '@/lib/game/storage';
+import { conversationHistory, latestRetryable } from '@/lib/game/chat';
+import { withAbort } from '@/lib/game/abort';
 
 const Icon = ({ name }: { name: 'back' | 'more' | 'image' | 'voice' | 'shirt' | 'send' | 'sparkle' | 'heart' | 'close' | 'upload' | 'chat' | 'users' | 'archive' | 'settings' | 'phone' | 'video' | 'plus' }) => {
   const paths = {
@@ -38,13 +39,25 @@ function createMessage(role: ChatMessage['role'], content: string): ChatMessage 
   return { id: crypto.randomUUID(), role, content, createdAt: Date.now() };
 }
 
-export function GameApp({ userEmail }: { userEmail: string }) {
+export function GameApp(props: { userId: string; userEmail: string }) {
+  return <GameSession key={props.userId} {...props} />;
+}
+
+function GameSession({ userId, userEmail }: { userId: string; userEmail: string }) {
   const router = useRouter();
-  const [game, setGame] = useState<GameState>(DEFAULT_STATE);
+  const [game, setGame] = useState<GameState>(initialGame);
   const [hydrated, setHydrated] = useState(false);
   const [input, setInput] = useState('');
   const [conversationQuery, setConversationQuery] = useState('');
   const [sending, setSending] = useState(false);
+  const [sendingCharacter, setSendingCharacter] = useState<CharacterId | null>(null);
+  const [storageWarning, setStorageWarning] = useState('');
+  const [leaving, setLeaving] = useState(false);
+  const mountedRef = useRef(false);
+  const sendingRef = useRef(false);
+  const controllersRef = useRef(new Set<AbortController>());
+  const urlsRef = useRef(new Set<string>());
+  const canPersistRef = useRef(true);
   const [toast, setToast] = useState('');
   const [tryOnOpen, setTryOnOpen] = useState(false);
   const [tryOnFile, setTryOnFile] = useState<File | null>(null);
@@ -55,26 +68,33 @@ export function GameApp({ userEmail }: { userEmail: string }) {
   const mediaRestoredRef = useRef(false);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setGame({ ...DEFAULT_STATE, ...(JSON.parse(raw) as GameState) });
-    } catch {
-      localStorage.removeItem(STORAGE_KEY);
-    }
+    mountedRef.current = true;
+    const controllers = controllersRef.current;
+    const urls = urlsRef.current;
+    let loaded;
+    try { loaded = readAccountGame(window.localStorage, userId); }
+    catch { loaded = { game: initialGame(), warning: '浏览器禁止了本地存储，本次聊天不会保存。', canPersist: false }; }
+    setGame(loaded.game);
+    setStorageWarning(loaded.warning);
+    canPersistRef.current = loaded.canPersist;
     setHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    const persistable: GameState = {
-      ...game,
-      messages: Object.fromEntries(Object.entries(game.messages).map(([key, messages]) => [key, messages?.map((message) => ({ ...message, mediaUrl: undefined }))])),
+    return () => {
+      mountedRef.current = false;
+      controllers.forEach((controller) => controller.abort());
+      urls.forEach((url) => URL.revokeObjectURL(url));
+      urls.clear();
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(persistable));
-  }, [game, hydrated]);
+  }, [userId]);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || leaving || !canPersistRef.current) return;
+    let saved = false;
+    try { saved = writeAccountGame(window.localStorage, userId, game); } catch { /* 禁用存储 */ }
+    if (!saved) setStorageWarning('本地存储空间不足或不可用，本次新消息可能无法保存。');
+  }, [game, hydrated, leaving, userId]);
+
+  useEffect(() => {
+    if (!hydrated || leaving) return;
     if (mediaRestoredRef.current) return;
     mediaRestoredRef.current = true;
     const restore = async () => {
@@ -82,18 +102,22 @@ export function GameApp({ userEmail }: { userEmail: string }) {
       for (const messages of Object.values(game.messages)) {
         for (const message of messages ?? []) {
           if (message.mediaKey && !message.mediaUrl) {
-            const blob = await loadMedia(message.mediaKey).catch(() => undefined);
-            if (blob) updates.push({ id: message.id, url: URL.createObjectURL(blob) });
+            const blob = await loadMedia(userId, message.mediaKey).catch(() => undefined);
+            if (blob && mountedRef.current) {
+              const url = URL.createObjectURL(blob);
+              urlsRef.current.add(url);
+              updates.push({ id: message.id, url });
+            }
           }
         }
       }
-      if (updates.length) {
+      if (updates.length && mountedRef.current) {
         const urls = new Map(updates.map((item) => [item.id, item.url]));
         setGame((current) => ({ ...current, messages: Object.fromEntries(Object.entries(current.messages).map(([key, messages]) => [key, messages?.map((message) => urls.has(message.id) ? { ...message, mediaUrl: urls.get(message.id) } : message)])) }));
       }
     };
     void restore();
-  }, [hydrated, game.messages]);
+  }, [hydrated, game.messages, userId, leaving]);
 
   const current = game.selectedCharacter ? getCharacter(game.selectedCharacter) : null;
   const currentMessages = useMemo(() => current ? game.messages[current.id] ?? [] : [], [current, game.messages]);
@@ -124,6 +148,7 @@ export function GameApp({ userEmail }: { userEmail: string }) {
   }, [tryOnFile]);
 
   const updateMessages = useCallback((characterId: CharacterId, updater: (messages: ChatMessage[]) => ChatMessage[]) => {
+    if (!mountedRef.current) return;
     setGame((currentGame) => ({ ...currentGame, messages: { ...currentGame.messages, [characterId]: updater(currentGame.messages[characterId] ?? []) } }));
   }, []);
 
@@ -131,23 +156,32 @@ export function GameApp({ userEmail }: { userEmail: string }) {
     const mediaId = crypto.randomUUID();
     const mediaKey = `media-${mediaId}`;
     const type = intent === 'image' ? 'image' : 'audio';
-    const pending: ChatMessage = { id: mediaId, role: 'assistant', content: intent === 'image' ? '正在为你拍一张照片…' : '正在录一段语音…', createdAt: Date.now(), mediaType: type, pending: true };
+    const pending: ChatMessage = { id: mediaId, role: 'assistant', content: intent === 'image' ? '正在为你拍一张照片…' : '正在录一段语音…', createdAt: Date.now(), mediaType: type, requestedQuota: intent === 'image' ? 'imageRemaining' : 'voiceRemaining', pending: true };
     updateMessages(characterId, (messages) => [...messages, pending]);
     setGame((state) => ({ ...state, [intent === 'image' ? 'imageRemaining' : 'voiceRemaining']: Math.max(0, state[intent === 'image' ? 'imageRemaining' : 'voiceRemaining'] - 1) }));
 
+    const controller = new AbortController();
+    controllersRef.current.add(controller);
+    const timer = window.setTimeout(() => controller.abort(), 180_000);
     try {
       const endpoint = intent === 'image' ? '/api/image' : '/api/tts';
-      const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ characterId, text: content }) });
-      if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? '生成失败');
-      const blob = await response.blob();
-      await saveMedia(mediaKey, blob);
+      const response = await withAbort(fetch(endpoint, { signal: controller.signal, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ characterId, text: content }) }), controller.signal);
+      if (!response.ok) throw new Error((await withAbort(response.json().catch(() => null), controller.signal))?.error ?? '生成失败');
+      const blob = await withAbort(response.blob(), controller.signal);
+      if (!mountedRef.current) return;
+      if (controller.signal.aborted) throw new DOMException('Timeout', 'AbortError');
+      await withAbort(saveMedia(userId, mediaKey, blob), controller.signal);
+      if (!mountedRef.current) return;
+      if (controller.signal.aborted) throw new DOMException('Timeout', 'AbortError');
       const mediaUrl = URL.createObjectURL(blob);
+      urlsRef.current.add(mediaUrl);
       updateMessages(characterId, (messages) => messages.map((message) => message.id === mediaId ? { ...message, content: intent === 'image' ? '只给你看哦。' : content, mediaUrl, mediaKey, pending: false } : message));
     } catch (error) {
+      if (!mountedRef.current) return;
       setGame((state) => ({ ...state, [intent === 'image' ? 'imageRemaining' : 'voiceRemaining']: Math.min(3, state[intent === 'image' ? 'imageRemaining' : 'voiceRemaining'] + 1) }));
-      updateMessages(characterId, (messages) => messages.map((message) => message.id === mediaId ? { ...message, content: error instanceof Error ? error.message : '生成失败，请稍后再试', pending: false, failed: true } : message));
-    }
-  }, [updateMessages]);
+      updateMessages(characterId, (messages) => messages.map((message) => message.id === mediaId ? { ...message, content: controller.signal.aborted ? '生成超时，请稍后再试' : error instanceof Error ? error.message : '生成失败，请稍后再试', pending: false, failed: true } : message));
+    } finally { window.clearTimeout(timer); controllersRef.current.delete(controller); }
+  }, [updateMessages, userId]);
 
   const selectClothingImage = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -186,6 +220,7 @@ export function GameApp({ userEmail }: { userEmail: string }) {
       content: '正在试穿这件衣服…',
       createdAt: Date.now(),
       mediaType: 'image',
+      requestedQuota: 'tryOnRemaining',
       pending: true,
     };
 
@@ -193,16 +228,24 @@ export function GameApp({ userEmail }: { userEmail: string }) {
     updateMessages(characterId, (messages) => [...messages, pending]);
     setGame((state) => ({ ...state, tryOnRemaining: Math.max(0, state.tryOnRemaining - 1) }));
 
+    const controller = new AbortController();
+    controllersRef.current.add(controller);
+    const timer = window.setTimeout(() => controller.abort(), 180_000);
     try {
       const formData = new FormData();
       formData.append('characterId', characterId);
       formData.append('clothingImage', tryOnFile);
-      const response = await fetch('/api/try-on', { method: 'POST', body: formData });
-      if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? '换衣生成失败');
+      const response = await withAbort(fetch('/api/try-on', { signal: controller.signal, method: 'POST', body: formData }), controller.signal);
+      if (!response.ok) throw new Error((await withAbort(response.json().catch(() => null), controller.signal))?.error ?? '换衣生成失败');
 
-      const blob = await response.blob();
-      await saveMedia(mediaKey, blob);
+      const blob = await withAbort(response.blob(), controller.signal);
+      if (!mountedRef.current) return;
+      if (controller.signal.aborted) throw new DOMException('Timeout', 'AbortError');
+      await withAbort(saveMedia(userId, mediaKey, blob), controller.signal);
+      if (!mountedRef.current) return;
+      if (controller.signal.aborted) throw new DOMException('Timeout', 'AbortError');
       const mediaUrl = URL.createObjectURL(blob);
+      urlsRef.current.add(mediaUrl);
       updateMessages(characterId, (messages) => messages.map((message) => message.id === messageId ? {
         ...message,
         content: '换好啦，看看这身怎么样？',
@@ -214,40 +257,54 @@ export function GameApp({ userEmail }: { userEmail: string }) {
       setTryOnFile(null);
       setToast('换衣完成');
     } catch (error) {
+      if (!mountedRef.current) return;
       setGame((state) => ({ ...state, tryOnRemaining: Math.min(3, state.tryOnRemaining + 1) }));
       updateMessages(characterId, (messages) => messages.map((message) => message.id === messageId ? {
         ...message,
-        content: error instanceof Error ? error.message : '换衣生成失败，请稍后再试',
+        content: controller.signal.aborted ? '换衣生成超时，请稍后再试' : error instanceof Error ? error.message : '换衣生成失败，请稍后再试',
         pending: false,
         failed: true,
       } : message));
     } finally {
-      setTryOnSending(false);
+      window.clearTimeout(timer);
+      controllersRef.current.delete(controller);
+      if (mountedRef.current) setTryOnSending(false);
     }
-  }, [current, game.tryOnRemaining, tryOnFile, tryOnSending, updateMessages]);
+  }, [current, game.tryOnRemaining, tryOnFile, tryOnSending, updateMessages, userId]);
 
-  const send = useCallback(async (forcedText?: string, forcedMedia?: Exclude<MediaIntent, 'none'>) => {
+  const send = useCallback(async (forcedText?: string, forcedMedia?: Exclude<MediaIntent, 'none'>, retryId?: string) => {
     const characterId = game.selectedCharacter;
     const text = (forcedText ?? input).trim();
-    if (!characterId || !text || sending) return;
+    if (!characterId || !text || sendingRef.current || leaving) return;
+    const messages = game.messages[characterId] ?? [];
+    const retry = retryId ? messages.find((m) => m.id === retryId) : undefined;
+    if (retryId && (!retry || !latestRetryable(messages, retryId))) return;
+    const requestedMedia = retry?.requestedMedia ?? forcedMedia;
     if (game.textRemaining <= 0) { setToast('免费文字消息已经用完啦'); return; }
     if (text.length > 50) { setToast('每条消息最多 50 个字'); return; }
-    if (forcedMedia === 'image' && game.imageRemaining <= 0) { setToast('今天的自拍额度已经用完'); return; }
-    if (forcedMedia === 'voice' && game.voiceRemaining <= 0) { setToast('今天的语音额度已经用完'); return; }
+    if (requestedMedia === 'image' && game.imageRemaining <= 0) { setToast('今天的自拍额度已经用完'); return; }
+    if (requestedMedia === 'voice' && game.voiceRemaining <= 0) { setToast('今天的语音额度已经用完'); return; }
 
-    const userMessage = createMessage('user', text);
-    const history = [...(game.messages[characterId] ?? []), userMessage].filter((message) => !message.mediaType).slice(-12);
-    setInput('');
+    sendingRef.current = true;
+    const userMessage: ChatMessage = { ...(retry ?? createMessage('user', text)), pending: true, failed: false, error: undefined, requestedMedia };
+    const history = conversationHistory(messages, userMessage);
+    if (!retry) setInput('');
     setSending(true);
-    updateMessages(characterId, (messages) => [...messages, userMessage]);
+    setSendingCharacter(characterId);
+    updateMessages(characterId, (items) => retry ? items.map((m) => m.id === retry.id ? userMessage : m) : [...items, userMessage]);
     setGame((state) => ({ ...state, textRemaining: state.textRemaining - 1 }));
-
+    const controller = new AbortController();
+    controllersRef.current.add(controller);
+    const timer = window.setTimeout(() => controller.abort(), 50_000);
     try {
-      const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ characterId, messages: history, forcedMedia }) });
-      if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? '消息发送失败');
-      const result = await response.json() as ChatResponse;
-      updateMessages(characterId, (messages) => [...messages, createMessage('assistant', result.reply)]);
-      const intent = forcedMedia ?? result.mediaIntent;
+      const response = await withAbort(fetch('/api/chat', { signal: controller.signal, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ characterId, messages: history, forcedMedia: requestedMedia }) }), controller.signal);
+      if (!response.ok) throw new Error((await withAbort(response.json().catch(() => null), controller.signal))?.error ?? '消息发送失败');
+      const result = await withAbort(response.json(), controller.signal) as ChatResponse;
+      if (typeof result.reply !== 'string' || !result.reply.trim()) throw new Error('回复暂时不可用，请重试');
+      if (!mountedRef.current) return;
+      if (controller.signal.aborted) throw new DOMException('Timeout', 'AbortError');
+      updateMessages(characterId, (items) => [...items.map((m) => m.id === userMessage.id ? { ...m, pending: false } : m), createMessage('assistant', result.reply)]);
+      const intent = requestedMedia ?? result.mediaIntent;
       if (intent === 'image') {
         if (game.imageRemaining > 0) void generateMedia(characterId, 'image', result.imagePrompt || text);
         else setToast('她想发照片，但自拍额度已经用完了');
@@ -257,12 +314,17 @@ export function GameApp({ userEmail }: { userEmail: string }) {
         else setToast('她想发语音，但语音额度已经用完了');
       }
     } catch (error) {
+      if (!mountedRef.current) return;
       setGame((state) => ({ ...state, textRemaining: Math.min(100, state.textRemaining + 1) }));
-      updateMessages(characterId, (messages) => [...messages, { ...createMessage('assistant', error instanceof Error ? error.message : '网络开小差了，再试一次吧'), failed: true }]);
+      const reason = controller.signal.aborted ? '回复超时，请重试' : error instanceof Error ? error.message : '网络开小差了，请重试';
+      updateMessages(characterId, (items) => items.map((m) => m.id === userMessage.id ? { ...m, pending: false, failed: true, error: reason } : m));
     } finally {
-      setSending(false);
+      window.clearTimeout(timer);
+      controllersRef.current.delete(controller);
+      sendingRef.current = false;
+      if (mountedRef.current) { setSending(false); setSendingCharacter(null); }
     }
-  }, [game, input, sending, updateMessages, generateMedia]);
+  }, [game, input, leaving, updateMessages, generateMedia]);
 
   const chooseCharacter = (character: CharacterProfile) => {
     setGame((state) => {
@@ -273,21 +335,31 @@ export function GameApp({ userEmail }: { userEmail: string }) {
   };
 
   const reset = () => {
-    if (!confirm('确定要清空所有聊天记录和本地额度吗？')) return;
-    setGame(DEFAULT_STATE);
+    if (sendingRef.current || tryOnSending || Object.values(game.messages).some((items) => items?.some((m) => m.pending))) { setToast('请等待当前请求结束后再清空'); return; }
+    if (!confirm('确定要清空当前账号的聊天记录和本地额度吗？')) return;
+    canPersistRef.current = true;
+    setStorageWarning('');
+    setGame(initialGame());
   };
 
   const signOut = async () => {
-    await authClient.signOut();
-    router.replace('/auth/sign-in');
-    router.refresh();
+    setLeaving(true);
+    try {
+      const result = await authClient.signOut();
+      if (result?.error) throw new Error('退出失败');
+      mountedRef.current = false;
+      controllersRef.current.forEach((controller) => controller.abort());
+      router.replace('/auth/sign-in');
+      router.refresh();
+    } catch { setLeaving(false); setToast('退出失败，请稍后重试'); }
   };
 
-  if (!hydrated) return <div className="splash"><span>♥</span><p>正在准备心动相遇…</p></div>;
-  if (!current) return <CharacterSelect userEmail={userEmail} onChoose={chooseCharacter} onSignOut={() => void signOut()} />;
+  if (!hydrated || leaving) return <div className="splash"><span>♥</span><p>正在准备心动相遇…</p></div>;
+  if (!current) return <CharacterSelect warning={[storageWarning, toast].filter(Boolean).join(' ')} userEmail={userEmail} onChoose={chooseCharacter} onSignOut={() => void signOut()} />;
 
   return (
     <main className="chat-shell" style={{ '--accent': current.accent, '--accent-soft': current.accentSoft } as React.CSSProperties}>
+      {storageWarning && <div className="storage-warning" role="status">{storageWarning}</div>}
       {toast && <div className="toast"><Icon name="sparkle" />{toast}</div>}
       <div className="chat-window">
         <aside className="chat-rail" aria-label="主要功能">
@@ -353,12 +425,12 @@ export function GameApp({ userEmail }: { userEmail: string }) {
 
         <div className="message-list" ref={scrollRef}>
           <div className="date-divider"><span>今天 · 心动相遇第 1 天</span></div>
-          {currentMessages.map((message) => <MessageBubble key={message.id} message={message} character={current} />)}
-          {sending && <div className="message-row assistant"><Image src={current.image} alt="" width={34} height={34} /><div className="typing"><i/><i/><i/></div></div>}
+          {currentMessages.map((message) => <MessageBubble key={message.id} message={message} character={current} retryDisabled={sending} onRetry={latestRetryable(currentMessages, message.id) ? () => void send(message.content, message.requestedMedia, message.id) : undefined} />)}
+          {sending && sendingCharacter === current.id && <div className="message-row assistant"><Image src={current.image} alt="" width={34} height={34} /><div className="typing"><i/><i/><i/></div></div>}
         </div>
 
         <div className="suggestions">
-          {['今天过得怎么样？', '你会喜欢什么样的人？', '我有点想你了'].map((text) => <button key={text} onClick={() => void send(text)}>{text}</button>)}
+          {['今天过得怎么样？', '你会喜欢什么样的人？', '我有点想你了'].map((text) => <button key={text} disabled={sending} onClick={() => void send(text)}>{text}</button>)}
         </div>
 
         <footer className="composer-wrap">
@@ -368,7 +440,7 @@ export function GameApp({ userEmail }: { userEmail: string }) {
             <button onClick={() => setTryOnOpen(true)} disabled={!game.tryOnRemaining || sending || tryOnSending}><Icon name="shirt" /><span>给她换衣</span><em>{game.tryOnRemaining}</em></button>
           </div>
           <div className="composer">
-            <textarea value={input} onChange={(event) => setInput(event.target.value.slice(0, 50))} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send(); } }} placeholder="和她说点什么…" rows={1} />
+            <textarea value={input} onChange={(event) => setInput(event.target.value.slice(0, 50))} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} placeholder="和她说点什么…" rows={1} />
             <span className={input.length > 42 ? 'warn' : ''}>{input.length}/50 · {game.textRemaining}</span>
             <button onClick={() => void send()} disabled={!input.trim() || sending}><Icon name="send" /></button>
           </div>
@@ -405,7 +477,7 @@ export function GameApp({ userEmail }: { userEmail: string }) {
   );
 }
 
-function CharacterSelect({ userEmail, onChoose, onSignOut }: { userEmail: string; onChoose: (character: CharacterProfile) => void; onSignOut: () => void }) {
+function CharacterSelect({ userEmail, warning, onChoose, onSignOut }: { warning: string; userEmail: string; onChoose: (character: CharacterProfile) => void; onSignOut: () => void }) {
   const [active, setActive] = useState<CharacterId>('zhixia');
   const selected = useMemo(() => getCharacter(active), [active]);
   return (
@@ -415,6 +487,7 @@ function CharacterSelect({ userEmail, onChoose, onSignOut }: { userEmail: string
         <div><strong>女神攻略</strong><span>YOUR AI LOVE STORY</span></div>
         <div className="account-controls"><span title={userEmail}>{userEmail}</span><button onClick={onSignOut}>退出</button></div>
       </header>
+      {warning && <p className="storage-warning" role="status">{warning}</p>}
       <section className="select-intro"><span>CHAPTER 01 · 初次心动</span><h1>今晚，想和谁聊聊？</h1><p>四种性格，四段不同的故事。选择让你心动的她。</p></section>
       <section className="character-grid">
         {CHARACTERS.map((character) => (
@@ -435,7 +508,7 @@ function CharacterSelect({ userEmail, onChoose, onSignOut }: { userEmail: string
   );
 }
 
-function MessageBubble({ message, character }: { message: ChatMessage; character: CharacterProfile }) {
+function MessageBubble({ message, character, onRetry, retryDisabled }: { message: ChatMessage; character: CharacterProfile; onRetry?: () => void; retryDisabled: boolean }) {
   const time = new Date(message.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
   return (
     <div className={`message-row ${message.role}`}>
@@ -444,7 +517,8 @@ function MessageBubble({ message, character }: { message: ChatMessage; character
         {message.pending && <span className="media-loading"><i /><i /><i /></span>}
         {!message.pending && message.mediaType === 'image' && message.mediaUrl && <Image src={message.mediaUrl} alt={`${character.name}发来的自拍`} width={280} height={380} unoptimized />}
         {!message.pending && message.mediaType === 'audio' && message.mediaUrl && <audio controls preload="metadata" src={message.mediaUrl} />}
-        <p>{message.content}</p><time>{time}{message.failed ? ' · 失败' : ''}</time>
+        <p>{message.content}</p><time>{time}{message.pending && message.role === 'user' ? ' · 发送中' : message.failed ? ' · 失败' : ''}</time>
+        {message.role === 'user' && message.failed && <div className="message-error" role="status"><span>{message.error ?? '消息未发送成功'}</span>{onRetry && <button onClick={onRetry} disabled={retryDisabled}>重试发送</button>}</div>}
       </div>
     </div>
   );

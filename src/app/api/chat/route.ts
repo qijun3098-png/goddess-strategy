@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
+import { parseChatRequest } from '@/lib/game/chat';
 import { getCharacter } from '@/lib/characters';
 import { getAuthenticatedAppUser } from '@/lib/auth/user';
-import type { CharacterId, ChatMessage, ChatResponse, MediaIntent } from '@/lib/types';
+import type { CharacterId, ChatResponse, MediaIntent } from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -40,10 +41,9 @@ export async function POST(request: Request) {
     const user = await getAuthenticatedAppUser();
     if (!user) return NextResponse.json({ error: '请先登录' }, { status: 401 });
 
-    const body = await request.json() as { characterId?: CharacterId; messages?: ChatMessage[]; forcedMedia?: MediaIntent };
-    if (!body.characterId || !body.messages?.length) return NextResponse.json({ error: '请求内容不完整' }, { status: 400 });
-    const lastInput = body.messages.at(-1)?.content.trim() ?? '';
-    if (!lastInput || lastInput.length > 50) return NextResponse.json({ error: '每条消息需要在 1—50 个字之间' }, { status: 400 });
+    const body = parseChatRequest(await request.json().catch(() => null));
+    if (!body) return NextResponse.json({ error: '请求格式不正确；请选择有效角色，最后一条消息需为 1—50 个字' }, { status: 400 });
+    const lastInput = body.messages.at(-1)!.content;
     const character = getCharacter(body.characterId);
 
     if (UNSAFE_REQUEST.test(lastInput)) {
@@ -71,6 +71,6 @@ export async function POST(request: Request) {
     } finally { clearTimeout(timeout); }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') return NextResponse.json({ error: '回复超时，请再试一次' }, { status: 504 });
-    return NextResponse.json({ error: error instanceof Error ? error.message : '消息发送失败' }, { status: 500 });
+    return NextResponse.json({ error: '对话服务暂时不可用，请稍后重试' }, { status: 500 });
   }
 }

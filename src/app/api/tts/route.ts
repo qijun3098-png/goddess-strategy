@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { DEFAULT_SPEAKERS, SPEAKER_ENV } from '@/lib/characters';
 import { getAuthenticatedAppUser } from '@/lib/auth/user';
-import type { CharacterId } from '@/lib/types';
+import { parseMediaRequest } from '@/lib/game/media-request';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -35,8 +35,9 @@ export async function POST(request: Request) {
     const user = await getAuthenticatedAppUser();
     if (!user) return NextResponse.json({ error: '请先登录' }, { status: 401 });
 
-    const { characterId, text } = await request.json() as { characterId?: CharacterId; text?: string };
-    if (!characterId || !text?.trim()) return NextResponse.json({ error: '语音请求不完整' }, { status: 400 });
+    const body = parseMediaRequest(await request.json().catch(() => null), 160);
+    if (!body) return NextResponse.json({ error: '语音请求格式不正确' }, { status: 400 });
+    const { characterId, text } = body;
     const apiKey = process.env.VOLCENGINE_TTS_API_KEY;
     if (!apiKey) return NextResponse.json({ error: '尚未配置 VOLCENGINE_TTS_API_KEY，暂时不能生成语音' }, { status: 503 });
     const envName = SPEAKER_ENV[characterId];
@@ -50,14 +51,13 @@ export async function POST(request: Request) {
       signal: AbortSignal.timeout(110_000),
     });
     if (!response.ok) {
-      const detail = await response.text();
-      console.error('TTS provider error', response.status, detail.slice(0, 500));
+      console.error('TTS provider error', response.status);
       throw new Error(`语音生成失败（${response.status}）`);
     }
     const audio = decodeAudio(await response.text());
     if (!audio.length) throw new Error('语音服务没有返回音频');
     return new Response(audio, { headers: { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' } });
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : '语音生成失败' }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: '语音生成失败，请稍后重试' }, { status: 500 });
   }
 }
